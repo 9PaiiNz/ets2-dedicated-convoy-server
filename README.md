@@ -1,4 +1,6 @@
 # ETS2/ATS Convoy Multiplayer Dedicated Server
+> Fork of [LsHallo/ets2-dedicated-convoy-server](https://github.com/LsHallo/ets2-dedicated-convoy-server) with bug fixes and security hardening.
+
 This docker container provides the new (as of Dec 2022) dedicated server for ETS2/ATS in a simple and complete package.  
 Easy to configure and use!
 
@@ -26,7 +28,7 @@ docker run -d \
 --network host \
 --restart unless-stopped \
 -e "ETS_SERVER_NAME=My Server" \
-lshallo/ets2-convoy-server
+ghcr.io/9paiinz/ets2-convoy-server
 ```
 This minimal example will start the server with default settings and a custom name defined.  
 
@@ -40,7 +42,7 @@ docker run -d \
 --network host \
 --restart unless-stopped \
 -e "ATS_SERVER_NAME=My Server" \
-lshallo/ats-convoy-server
+ghcr.io/9paiinz/ats-convoy-server
 ```
 This minimal example will start the server with default settings and a custom name defined.  
 
@@ -93,7 +95,7 @@ Stop the server with `docker compose stop` and remove it with `docker compose do
 
 *Notes*:
 - Variables are also supported with ATS_ prefix instead of ETS_
-- Some are marked with question marks. I'm not sure what the parameters are doing. If you have any clue, please open an [issue](https://github.com/LsHallo/ets2-dedicated-convoy-server/issues) or [pull request](https://github.com/LsHallo/ets2-dedicated-convoy-server/pulls).
+- Some are marked with question marks. I'm not sure what the parameters are doing. If you have any clue, please open an [issue](https://github.com/9PaiiNz/ets2-dedicated-convoy-server/issues) or [pull request](https://github.com/9PaiiNz/ets2-dedicated-convoy-server/pulls).
 
 
 ## Custom Mods
