@@ -61,14 +61,34 @@ def generate_moderator_list(mod_list: list) -> str:
     ```
     """
 
-    if len(mod_list) == 1 and len(mod_list[0]) < 1:
+    ids = []
+    for mod in mod_list:
+        mod = str(mod).strip()
+        if not mod:
+            continue
+        if not mod.isdigit():
+            logging.warning(f"Ignoring invalid moderator steam ID {mod!r}. Only digits are allowed.")
+            continue
+        ids.append(mod)
+
+    if not ids:
         return "moderator_list: 0"
-    
-    out_str = f"moderator_list: {len(mod_list)}\n"
-    for i, mod in enumerate(mod_list):
-        out_str += f" moderator_list[{i}]: {str(mod).strip()}\n"
-    
+
+    out_str = f"moderator_list: {len(ids)}\n"
+    for i, mod in enumerate(ids):
+        out_str += f" moderator_list[{i}]: {mod}\n"
+
     return out_str
+
+
+def sii_escape(value: str) -> str:
+    """
+    Escapes a value for use inside a double quoted string in a .sii file.
+    Backslashes and double quotes are escaped, control characters
+    (including newlines) are removed so a value cannot break out of its line.
+    """
+    value = "".join(ch for ch in str(value) if ch.isprintable())
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def get_version():
@@ -98,42 +118,55 @@ def is_truthy(value: str | bool | None) -> bool:
 
 
 def get_current_max_players(config_ds: str) -> int:
+    """
+    Returns the value of `g_max_convoy_size` in config_ds.cfg.
+    Returns 0 if the file or the setting does not exist.
+    """
     if not os.path.isfile(config_ds):
         return 0
     with open(config_ds, "r") as f:
-        while line := f.readline():
-            if line.find('g_max_convoy_size'):
-                return int(re.search(r"(\d+)", line).group(1))
+        for line in f:
+            if "g_max_convoy_size" in line:
+                match = re.search(r"(\d+)", line)
+                if match:
+                    return int(match.group(1))
+    return 0
 
 
 def max_player_workaround(config_ds: str, max_players: int):
     logging.info("You requested more than 8 players. Trying a workaround to enable this...")
     if max_players > 64:
         logging.warning("!!You requested more than 64 players. This probably wont work!! Warranty is out the window!")
-    
-    if get_current_max_players(config_ds) == max_players:
-        logging.info("Request player count already in config_ds. No changes necessary.")
-        return
-    
+
     if not os.path.isfile(config_ds):
         logging.warning("config_ds.cfg does not exist. This is probably since this is the first start.")
         logging.warning("Please restart the container `docker compose restart` to apply player limit workaround.")
-    
-    os.chmod(config_ds, 0o600)
-    with open(config_ds, "r") as f:
-        lines = f.readlines()
-        for id, line in enumerate(lines):
-            if line.find("g_max_convoy_size") != -1:
-                lines[id] = re.sub(r"\d+", str(max_players), line)
-        
-        with open(config_ds, "w+") as fw:
-            if fw.writable():
-                fw.writelines(lines)
-                logging.info("config_ds.cfg modified and written.")
-            else:
-                logging.error("config_ds.cfg not writable.")
+        return
 
-    os.chmod(config_ds, 0o400)
+    if get_current_max_players(config_ds) == max_players:
+        logging.info("Request player count already in config_ds. No changes necessary.")
+        return
+
+    os.chmod(config_ds, 0o600)
+    try:
+        with open(config_ds, "r") as f:
+            lines = f.readlines()
+
+        found = False
+        for i, line in enumerate(lines):
+            if "g_max_convoy_size" in line:
+                lines[i] = re.sub(r"\d+", str(max_players), line, count=1)
+                found = True
+
+        if not found:
+            logging.warning("g_max_convoy_size not found in config_ds.cfg. Player limit workaround not applied.")
+            return
+
+        with open(config_ds, "w") as fw:
+            fw.writelines(lines)
+        logging.info("config_ds.cfg modified and written.")
+    finally:
+        os.chmod(config_ds, 0o400)
 
 
 def generate_config() -> str:
@@ -175,10 +208,10 @@ def generate_config() -> str:
     server_config = f"""SiiNunit
 {{
 server_config : _nameless.44c.eab0 {{
- lobby_name: "{server_name}"
- description: "{description}"
- welcome_message: "{welcome_message}"
- password: "{password}"
+ lobby_name: "{sii_escape(server_name)}"
+ description: "{sii_escape(description)}"
+ welcome_message: "{sii_escape(welcome_message)}"
+ password: "{sii_escape(password)}"
  max_players: {int(max_players)}
  max_vehicles_total: {int(max_vehicles_total)}
  max_ai_vehicles_player: {int(max_ai_vehicles_player)}
@@ -187,7 +220,7 @@ server_config : _nameless.44c.eab0 {{
  query_virtual_port: {int(query_virtual_port)}
  connection_dedicated_port: {int(server_port)}
  query_dedicated_port: {int(query_port)}
- server_logon_token: "{server_logon_token}"
+ server_logon_token: "{sii_escape(server_logon_token)}"
  player_damage: {str(player_damage).lower()}
  traffic: {str(traffic).lower()}
  hide_in_company: {str(hide_in_company).lower()}
@@ -225,13 +258,16 @@ if __name__ == "__main__":
     if write_config:
         config = generate_config()
         server_config = getenv("ETS_SERVER_CONFIG_FILE_PATH", "/home/steam/.local/share/Euro Truck Simulator 2/server_config.sii")
-        with open(server_config, "w") as f:
-            if f.writable():
+        try:
+            # Config contains password and logon token: only readable by the server user
+            fd = os.open(server_config, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
                 f.write(config)
-                f.flush()
-                logging.info("Config file written.")
-            else:
-                logging.error(f"Could not write config file ({server_config}). Check file permissions!")
+            os.chmod(server_config, 0o600)
+            logging.info("Config file written.")
+        except OSError as e:
+            logging.error(f"Could not write config file ({server_config}): {e}. Check file permissions!")
+            exit(1)
 
     if is_truthy(getenv("ETS_SERVER_UPDATE_ON_START", "true")) or not server_files_exist():
         APP_ID = getenv("APP_ID")
@@ -256,7 +292,7 @@ if __name__ == "__main__":
 
         result = subprocess.run(cmd)
 
-        if result != 0:
+        if result.returncode != 0:
             logging.error("Server Update failed!")
             logging.error(f"SteamCMD exited with exit code {result.returncode}")
             exit(result.returncode)

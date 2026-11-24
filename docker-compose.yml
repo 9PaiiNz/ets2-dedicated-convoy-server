@@ -3,8 +3,7 @@
 
 services:
   ets2-server:
-    image: lshallo/ets2-convoy-server
-    # image: ghcr.io/lshallo/ets2-convoy-server # GitHub container registry
+    image: ghcr.io/9paiinz/ets2-convoy-server
     container_name: ets2-server
     restart: unless-stopped
     tty: true
@@ -35,8 +34,7 @@ services:
       # more variables...
 
   ats-server:
-    image: lshallo/ats-convoy-server
-    # image: ghcr.io/lshallo/ats-convoy-server # GitHub container registry
+    image: ghcr.io/9paiinz/ats-convoy-server
     container_name: ats-server
     restart: unless-stopped
     tty: true
